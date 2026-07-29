@@ -12,4 +12,15 @@ model User {
   email     String   @unique
   password  String
   createdAt DateTime @default(now())
+  urls      Url[]
+}
+
+model Url {
+  id          String   @id @default(uuid())
+  shortCode   String   @unique
+  originalUrl String
+  clicks      Int      @default(0)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
 }
