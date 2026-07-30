@@ -4,6 +4,8 @@ import { prisma } from "./lib/prisma";
 import { redirectToOriginalUrl } from "./modules/url/url.controller";
 import authRoutes from "./modules/auth/auth.routes";
 import urlRoutes from "./modules/url/url.routes";
+import "./lib/redis";
+
 const app = express();
 const PORT = 4000;
 
