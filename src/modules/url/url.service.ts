@@ -1,6 +1,7 @@
 import { customAlphabet } from "nanoid";
 import { prisma } from "../../lib/prisma";
 import { CreateUrlInput } from "./url.schema";
+import { getCache, setCache } from "./cache/cache.service";
 
 const ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -35,6 +36,17 @@ export const urlService = {
   },
 
   async getOriginalUrl(shortCode: string) {
+    const cacheKey = `shortUrl:${shortCode}`;
+    const cached = await getCache(cacheKey);
+
+    if (cached) {
+      await prisma.url.update({
+        where: { shortCode },
+        data: { clicks: { increment: 1 } },
+      });
+      return { originalUrl: cached };
+    }
+
     const url = await prisma.url.findUnique({
       where: { shortCode },
     });
@@ -47,6 +59,8 @@ export const urlService = {
       where: { shortCode },
       data: { clicks: { increment: 1 } },
     });
+
+    await setCache(cacheKey, url.originalUrl);
 
     return url;
   },
