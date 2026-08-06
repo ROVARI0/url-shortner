@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma";
 import { CreateUrlInput } from "./url.schema";
 import { getCache, setCache } from "./cache/cache.service";
 import { bloomService } from "../bloom/bloom.service";
+import { lockService } from "../lock/lock.service";
 
 const ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -42,7 +43,7 @@ export const urlService = {
 
     throw new Error("Failed to generate a unique short code, please try again");
   },
-
+  //------------------------------------------------------------------------------
   async getOriginalUrl(shortCode: string) {
     const exists = await bloomService.mightExist(shortCode);
 
@@ -61,22 +62,44 @@ export const urlService = {
       return { originalUrl: cached };
     }
 
-    const url = await prisma.url.findUnique({
-      where: { shortCode },
-    });
+    // Cache miss — try to acquire the lock before hitting Postgres
+    const lock = await lockService.acquireLock(shortCode);
 
-    if (!url) {
-      throw new Error("Short URL not found");
+    if (!lock.acquired) {
+      // Someone else is already rebuilding the cache — wait briefly, then retry cache
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const retryCache = await getCache(cacheKey);
+      if (retryCache) {
+        await prisma.url.update({
+          where: { shortCode },
+          data: { clicks: { increment: 1 } },
+        });
+        return { originalUrl: retryCache };
+      }
+
+      throw new Error("Please retry shortly");
     }
 
-    await prisma.url.update({
-      where: { shortCode },
-      data: { clicks: { increment: 1 } },
-    });
+    try {
+      console.log("Querying Postgres for", shortCode);
+      const url = await prisma.url.findUnique({ where: { shortCode } });
 
-    await setCache(cacheKey, url.originalUrl);
+      if (!url) {
+        throw new Error("Short URL not found");
+      }
 
-    return url;
+      await prisma.url.update({
+        where: { shortCode },
+        data: { clicks: { increment: 1 } },
+      });
+
+      await setCache(cacheKey, url.originalUrl);
+
+      return url;
+    } finally {
+      await lockService.releaseLock(shortCode, lock.lockId!);
+    }
   },
 };
 // Short code abc123 gets created → added to Bloom filter (permanent) → also cached in Redis (temporary, 1hr TTL)
@@ -84,3 +107,43 @@ export const urlService = {
 // Someone visits abc123 again → Bloom filter check: "maybe exists" (correctly — it really was created, the filter never forgets that)
 // Since Bloom filter says "maybe," proceed to cache check → miss (since it expired)
 // Fall through to Postgres → finds the real row → re-populates the cache → returns the redirect
+
+//getOriginalUrl function path
+// Request
+//    │
+//    ▼
+// Bloom Filter
+//    │
+//    ├── Doesn't exist → Return Error
+//    │
+//    ▼
+// Redis Cache
+//    │
+//    ├── Cache Hit → Increment Clicks → Return URL
+//    │
+//    ▼
+// Acquire Lock
+//    │
+//    ├── Lock Not Acquired
+//    │       │
+//    │       ├── Wait 100ms
+//    │       ├── Check Cache Again
+//    │       ├── Cache Found → Return
+//    │       └── Still Missing → Retry Error
+//    │
+//    ▼
+// Database
+//    │
+//    ├── URL Not Found → Error
+//    │
+//    ▼
+// Increment Clicks
+//    │
+//    ▼
+// Store in Redis
+//    │
+//    ▼
+// Release Lock
+//    │
+//    ▼
+// Return URL

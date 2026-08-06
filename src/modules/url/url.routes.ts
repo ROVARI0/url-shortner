@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authMiddleware } from "../../middleware/auth.middleware";
+import { authMiddleware } from "../../middlewares/auth.middleware";
 import { createShortUrl } from "./url.controller";
 
 const router = Router();
