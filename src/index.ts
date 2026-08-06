@@ -3,6 +3,7 @@ import express from "express";
 import { prisma } from "./lib/prisma";
 import { redirectToOriginalUrl } from "./modules/url/url.controller";
 import { bloomService } from "./modules/bloom/bloom.service";
+import { globalRateLimiter } from "./middlewares/rate-limit/global-rate-limit.middleware";
 import authRoutes from "./modules/auth/auth.routes";
 import urlRoutes from "./modules/url/url.routes";
 import "./lib/redis";
@@ -11,6 +12,7 @@ const app = express();
 const PORT = 4000;
 
 app.use(express.json());
+app.use(globalRateLimiter);
 
 app.get("/health", (req, res) => {
   res.json({ status: "healthy" });
