@@ -3,5 +3,6 @@ node_modules
 dist
 /src/generated/prisma
 .vscode/
+GUIDE.md
 docker/pgbouncer/pgbouncer.ini
 docker/pgbouncer/userlist.txt 
