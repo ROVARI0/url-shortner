@@ -2,3 +2,6 @@ node_modules
 .env
 dist
 /src/generated/prisma
+.vscode/
+docker/pgbouncer/pgbouncer.ini
+docker/pgbouncer/userlist.txt 

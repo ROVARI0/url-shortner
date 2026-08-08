@@ -1,0 +1,3 @@
+PATH-->> docker/pgbouncer/userlist.txt.example
+---------------------------------------------
+"yourdbusername" "yourdbpassword"
