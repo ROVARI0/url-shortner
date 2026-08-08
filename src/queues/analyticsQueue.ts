@@ -4,3 +4,4 @@ import { redisConnection } from "../lib/redis";
 export const analyticsQueue = new Queue("analyticsQueue", {
   connection: redisConnection,
 });
+   
