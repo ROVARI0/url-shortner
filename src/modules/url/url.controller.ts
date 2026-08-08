@@ -16,7 +16,13 @@ export const createShortUrl = async (req: Request, res: Response) => {
 export const redirectToOriginalUrl = async (req: Request, res: Response) => {
   try {
     const shortCode = req.params.shortCode as string;
-    const url = await urlService.getOriginalUrl(shortCode);
+
+    const url = await urlService.getOriginalUrl(shortCode, {
+      ipAddress: req.ip,
+      userAgent: req.headers["user-agent"],
+      referrer: req.headers["referer"],
+    });
+
     return res.redirect(url.originalUrl);
   } catch (err: any) {
     return res.status(404).json({ error: err.message });

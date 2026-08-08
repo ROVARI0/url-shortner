@@ -1,0 +1,219 @@
+export const analyticsService = {
+  async recordClick(data: RecordClickInput) {
+    await prisma.$transaction([
+      prisma.clickAnalytics.create({
+        data: {
+          shortUrlId: data.shortUrlId,
+          ipAddress: data.ipAddress,
+          userAgent: data.userAgent,
+          referrer: data.referrer,
+        },
+      }),
+      prisma.url.update({
+        where: { id: data.shortUrlId },
+        data: { clicks: { increment: 1 } },
+      }),
+    ]);
+  },
+This function records one click on a shortened URL. It does two database operations together:
+
+Save detailed information about the click.
+Increase the URL's total click count by 1.
+
+Let's go line by line.
+
+1. The function
+async recordClick(data: RecordClickInput) {
+
+data contains information about the click, probably something like:
+
+{
+  shortUrlId: "abc123",
+  ipAddress: "192.168.1.10",
+  userAgent: "Chrome",
+  referrer: "google.com"
+}
+2. $transaction
+await prisma.$transaction([
+
+This is the important part.
+
+It tells Prisma:
+
+Execute these database operations as one transaction.
+
+Your two operations are:
+
+┌─────────────────────────────┐
+│        TRANSACTION          │
+│                             │
+│  1. Create click analytics  │
+│             ↓               │
+│  2. Increment click count   │
+│                             │
+└─────────────────────────────┘
+
+If one operation fails, Prisma rolls back the transaction so you don't end up with inconsistent data.
+
+3. Create the analytics record
+prisma.clickAnalytics.create({
+  data: {
+    shortUrlId: data.shortUrlId,
+    ipAddress: data.ipAddress,
+    userAgent: data.userAgent,
+    referrer: data.referrer,
+  },
+}),
+
+This creates a new row in your ClickAnalytics table.
+
+For example:
+
+ClickAnalytics
+
+id     shortUrlId   ipAddress       userAgent   referrer
+------------------------------------------------------------
+C1     URL1         192.168.1.10    Chrome      Google
+
+Notice:
+
+shortUrlId: data.shortUrlId
+
+This is the foreign key we discussed.
+
+It connects this click to a particular URL:
+
+ClickAnalytics.shortUrlId
+          ↓
+       Url.id
+
+So you're saying:
+
+"This click belongs to URL1."
+
+4. Increment the URL's click count
+
+Then:
+
+prisma.url.update({
+  where: { id: data.shortUrlId },
+  data: {
+    clicks: {
+      increment: 1
+    }
+  },
+}),
+
+Suppose the URL currently has:
+
+clicks = 10
+
+This:
+
+increment: 1
+
+changes it to:
+
+clicks = 11
+
+You don't need to do:
+
+clicks: oldClicks + 1
+
+Prisma handles the increment directly in the database.
+
+Why do you need both?
+
+Because they serve different purposes.
+
+clicks
+Url
+------------------
+shortCode: abc123
+clicks: 1500
+
+This gives you the total quickly.
+
+ClickAnalytics
+ClickAnalytics
+---------------------------------
+Click 1 → IP → browser → referrer
+Click 2 → IP → browser → referrer
+Click 3 → IP → browser → referrer
+...
+
+This gives you the details of every click.
+
+So:
+
+Url
+ │
+ ├── clicks = 3
+ │
+ └── ClickAnalytics
+       ├── Click 1
+       ├── Click 2
+       └── Click 3
+Why use a transaction?
+
+Imagine this happens:
+
+Create ClickAnalytics
+        ↓
+      SUCCESS ✅
+        ↓
+Update clicks
+        ↓
+      FAILED ❌
+
+Without a transaction, you could end up with:
+
+ClickAnalytics = 1 click
+Url.clicks = 0
+
+Your database becomes inconsistent.
+
+With:
+
+prisma.$transaction([...])
+
+it's essentially:
+
+Create analytics ──── SUCCESS
+       ↓
+Update clicks ─────── FAILED
+       ↓
+ROLLBACK
+       ↓
+Nothing is saved
+
+Or:
+
+Create analytics ──── SUCCESS
+       ↓
+Update clicks ─────── SUCCESS
+       ↓
+COMMIT ✅
+
+Both operations succeed together.
+
+In one sentence
+
+Your function says:
+
+"When someone clicks a short URL, save the details of that click and increase the URL's total click counter by 1, and make sure both operations succeed together."
+
+The relationship is:
+
+User
+ │
+ │ 1:N
+ ▼
+Url
+ │
+ │ 1:N
+ ▼
+ClickAnalytics
+
+And this function is operating on the Url ↔ ClickAnalytics relationship.
+------------------------------------------------------------------------------------------

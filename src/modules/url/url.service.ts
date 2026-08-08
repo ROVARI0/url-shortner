@@ -3,6 +3,8 @@ import { CreateUrlInput } from "./url.schema";
 import { getCache, setCache } from "./cache/cache.service";
 import { bloomService } from "../bloom/bloom.service";
 import { lockService } from "../lock/lock.service";
+import { analyticsService } from "../analytics/analytics.service";
+import { RequestMetadata } from "../../types/analytics.types";
 
 const ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -44,7 +46,7 @@ export const urlService = {
     throw new Error("Failed to generate a unique short code, please try again");
   },
   //------------------------------------------------------------------------------
-  async getOriginalUrl(shortCode: string) {
+  async getOriginalUrl(shortCode: string, metadata: RequestMetadata) {
     const exists = await bloomService.mightExist(shortCode);
 
     if (!exists) {
@@ -55,9 +57,10 @@ export const urlService = {
     const cached = await getCache(cacheKey);
 
     if (cached) {
-      await prisma.url.update({
-        where: { shortCode },
-        data: { clicks: { increment: 1 } },
+      const url = await prisma.url.findUnique({ where: { shortCode } });
+      await analyticsService.recordClick({
+        shortUrlId: url!.id,
+        ...metadata,
       });
       return { originalUrl: cached };
     }
@@ -71,9 +74,10 @@ export const urlService = {
 
       const retryCache = await getCache(cacheKey);
       if (retryCache) {
-        await prisma.url.update({
-          where: { shortCode },
-          data: { clicks: { increment: 1 } },
+        const url = await prisma.url.findUnique({ where: { shortCode } });
+        await analyticsService.recordClick({
+          shortUrlId: url!.id,
+          ...metadata,
         });
         return { originalUrl: retryCache };
       }
@@ -82,16 +86,15 @@ export const urlService = {
     }
 
     try {
-      console.log("Querying Postgres for", shortCode);
       const url = await prisma.url.findUnique({ where: { shortCode } });
 
       if (!url) {
         throw new Error("Short URL not found");
       }
 
-      await prisma.url.update({
-        where: { shortCode },
-        data: { clicks: { increment: 1 } },
+      await analyticsService.recordClick({
+        shortUrlId: url.id,
+        ...metadata,
       });
 
       await setCache(cacheKey, url.originalUrl);
