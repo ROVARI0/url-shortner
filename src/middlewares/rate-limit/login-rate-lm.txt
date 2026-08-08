@@ -1,0 +1,245 @@
+1. store: new RedisStore(...)
+store: new RedisStore({
+  sendCommand: async (...args: string[]) => {
+    return redis.call(args[0], ...args.slice(1)) as Promise<any>;
+  },
+  prefix: "rate-limit:login",
+}),
+
+Normally, express-rate-limit needs to keep track of something like:
+
+IP: 192.168.1.10
+Attempts: 3
+
+You're telling it:
+
+"Don't store this information in Node.js memory. Store it in Redis."
+
+So the flow is:
+
+Login Request
+      ↓
+express-rate-limit
+      ↓
+RedisStore
+      ↓
+Redis
+      ↓
+"How many attempts has this IP made?"
+2. new RedisStore(...)
+new RedisStore({
+
+RedisStore comes from:
+
+import RedisStore from "rate-limit-redis";
+
+It's an adapter between:
+
+express-rate-limit
+        ↕
+      Redis
+
+express-rate-limit doesn't directly know how your Redis client works, so RedisStore handles the storage logic.
+
+3. sendCommand
+
+This is probably the most confusing part:
+
+sendCommand: async (...args: string[]) => {
+  return redis.call(args[0], ...args.slice(1)) as Promise<any>;
+},
+
+The RedisStore needs to execute Redis commands.
+
+For example, it might need to do something conceptually like:
+
+GET some-key
+INCR some-key
+EXPIRE some-key 900
+
+Your sendCommand function tells it:
+
+"Whenever you need to execute a Redis command, use my redis client."
+
+What does ...args mean?
+
+Suppose RedisStore calls:
+
+sendCommand("GET", "rate-limit:login:123.123.123.123")
+
+Then:
+
+args
+
+contains:
+
+[
+  "GET",
+  "rate-limit:login:123.123.123.123"
+]
+
+Then:
+
+args[0]
+
+is:
+
+"GET"
+
+And:
+
+args.slice(1)
+
+is:
+
+[
+  "rate-limit:login:123.123.123.123"
+]
+
+Therefore:
+
+redis.call(args[0], ...args.slice(1))
+
+becomes essentially:
+
+redis.call(
+  "GET",
+  "rate-limit:login:123.123.123.123"
+);
+
+So this function is basically forwarding the Redis command.
+
+4. Why async?
+sendCommand: async (...args: string[]) => {
+
+Redis operations are asynchronous.
+
+Your application doesn't want to freeze while waiting for Redis.
+
+Conceptually:
+
+Node.js
+   │
+   ├── Send command → Redis
+   │
+   ├── Continue handling other work
+   │
+   └── Receive Redis result later
+5. What does this mean?
+as Promise<any>
+
+You're telling TypeScript:
+
+"Treat the result of this Redis operation as a Promise."
+
+It's a TypeScript type assertion.
+
+It's not doing anything to Redis itself.
+
+6. prefix
+prefix: "rate-limit:login",
+
+This tells RedisStore to use a prefix for its Redis keys.
+
+Think of Redis as a giant key-value store:
+
+KEY                              VALUE
+
+rate-limit:login:IP1              3
+rate-limit:login:IP2              1
+rate-limit:login:IP3              5
+
+The prefix makes it clear that these keys belong to your login rate limiter.
+
+You could have other rate limiters:
+
+rate-limit:login:...
+rate-limit:register:...
+rate-limit:forgot-password:...
+rate-limit:api:...
+
+This keeps Redis organized.
+
+Now the handler
+handler: (req: Request, res: Response) => {
+
+This function executes when the rate limit has been exceeded.
+
+Suppose your configuration is:
+
+windowMs: 15 * 60 * 1000,
+max: 5,
+
+The sixth failed request gets here.
+
+7. Logging the attack
+console.warn("LOGIN_RATE_LIMIT_EXCEEDED", {
+  ip: req.ip,
+  path: req.originalUrl,
+});
+
+You're creating a warning in your backend logs.
+
+For example:
+
+LOGIN_RATE_LIMIT_EXCEEDED {
+    ip: "192.168.1.20",
+    path: "/api/auth/login"
+}
+
+This can help you identify suspicious activity.
+
+8. req.ip
+req.ip
+
+This gives you the client's IP address as Express sees it.
+
+For example:
+
+192.168.1.20
+
+The rate limiter generally uses this kind of client identifier to distinguish users/clients.
+
+9. req.originalUrl
+req.originalUrl
+
+This tells you which URL was requested.
+
+For example:
+
+/api/auth/login
+
+So your log tells you:
+
+WHO?
+↓
+192.168.1.20
+
+WHAT?
+↓
+/api/auth/login
+10. Returning HTTP 429
+res.status(429)
+
+429 means:
+
+Too Many Requests
+
+You're telling the client:
+
+Stop sending requests.
+You've exceeded the allowed rate.
+
+Then:
+
+.json({
+  success: false,
+  message: "Too many login attempts. Please try again later",
+});
+
+The frontend receives:
+
+{
+  "success": false,
+  "message": "Too many login attempts. Please try again later"
+}
