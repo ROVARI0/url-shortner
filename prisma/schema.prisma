@@ -23,4 +23,15 @@ model Url {
   userId      String
   user        User     @relation(fields: [userId], references: [id])
   createdAt   DateTime @default(now())
+  analytics   ClickAnalytics[]
+}
+
+model ClickAnalytics {
+  id         String   @id @default(uuid())
+  shortUrlId String
+  url        Url      @relation(fields: [shortUrlId], references: [id])
+  ipAddress  String?
+  userAgent  String?
+  referrer   String?
+  clickedAt  DateTime @default(now())
 }
