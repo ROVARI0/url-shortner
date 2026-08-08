@@ -4,6 +4,7 @@ import { prisma } from "./lib/prisma";
 import { redirectToOriginalUrl } from "./modules/url/url.controller";
 import { bloomService } from "./modules/bloom/bloom.service";
 import { globalRateLimiter } from "./middlewares/rate-limit/global-rate-limit.middleware";
+import { logger } from "./config/logger";
 import authRoutes from "./modules/auth/auth.routes";
 import urlRoutes from "./modules/url/url.routes";
 import "./lib/redis";
@@ -29,9 +30,9 @@ app.use("/api/v1/urls", urlRoutes);
 app.get("/:shortCode", redirectToOriginalUrl);
 
 bloomService.initialize().catch((err) => {
-  console.error("Failed to initialize bloom filter:", err);
+  logger.error("Failed to initialize bloom filter:", err);
 });
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  logger.info(`Server running on port ${PORT}`);
 });

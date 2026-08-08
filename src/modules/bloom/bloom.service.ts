@@ -1,4 +1,6 @@
 import redis from "../../lib/redis";
+import { logger } from "../../config/logger";
+
 import {
   SHORT_URL_BLOOM_FILTER_KEY,
   BLOOM_CAPACITY,
@@ -12,12 +14,12 @@ export const bloomService = {
         "BF.RESERVE",
         SHORT_URL_BLOOM_FILTER_KEY,
         BLOOM_ERROR_RATE.toString(),
-        BLOOM_CAPACITY.toString()
+        BLOOM_CAPACITY.toString(),
       );
-      console.log("Bloom filter initialized");
+      logger.info("Bloom filter initialized");
     } catch (err: any) {
       if (err.message.includes("item exists")) {
-        console.log("Bloom filter already exists, skipping init");
+        logger.info("Bloom filter already exists, skipping init");
       } else {
         throw err;
       }
@@ -32,7 +34,7 @@ export const bloomService = {
     const result = await redis.call(
       "BF.EXISTS",
       SHORT_URL_BLOOM_FILTER_KEY,
-      shortCode
+      shortCode,
     );
     return result === 1;
   },

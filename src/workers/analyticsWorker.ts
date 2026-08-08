@@ -3,13 +3,17 @@ import { redisConnection } from "../lib/redis";
 import { analyticsService } from "../modules/analytics/analytics.service";
 import { deadLetterQueue } from "../queues/deadLetterQueue";
 import { RecordAnalyticsJob } from "../types/workers.types";
+import { logger } from "../config/logger";
 
 new Worker<RecordAnalyticsJob>(
   "analyticsQueue",
   async (job) => {
     try {
       if (job.name === "record-analytics") {
-        console.log("ANALYTICS_JOB_STARTED", job.id, job.data.shortUrlId);
+        logger.info(
+          { jobId: job.id, shortUrlId: job.data.shortUrlId },
+          "Analytics job started",
+        );
 
         await analyticsService.recordClick({
           shortUrlId: job.data.shortUrlId,
@@ -18,10 +22,13 @@ new Worker<RecordAnalyticsJob>(
           referrer: job.data.referrer,
         });
 
-        console.log("ANALYTICS_JOB_COMPLETED", job.id, job.data.shortUrlId);
+        logger.info(
+          { jobId: job.id, shortUrlId: job.data.shortUrlId },
+          "Analytics job completed",
+        );
       }
     } catch (error) {
-      console.error(`Job ${job.id} has failed`, error);
+      logger.error({ jobId: job.id, err: error }, "Job failed");
 
       await deadLetterQueue.add("failed-analytics", {
         jobName: job.name,

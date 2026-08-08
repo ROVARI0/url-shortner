@@ -1,4 +1,5 @@
 import "dotenv/config";
 import "./workers/analyticsWorker";
+import { logger } from "./config/logger";
 
-console.log("Worker process started, listening for jobs...");
+logger.info("Worker process started, listening for jobs...");
