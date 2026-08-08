@@ -3,8 +3,8 @@ import { CreateUrlInput } from "./url.schema";
 import { getCache, setCache } from "./cache/cache.service";
 import { bloomService } from "../bloom/bloom.service";
 import { lockService } from "../lock/lock.service";
-import { analyticsService } from "../analytics/analytics.service";
 import { RequestMetadata } from "../../types/analytics.types";
+import { analyticsQueue } from "../../queues/analyticsQueue";
 
 const ALPHABET =
   "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
@@ -58,24 +58,22 @@ export const urlService = {
 
     if (cached) {
       const url = await prisma.url.findUnique({ where: { shortCode } });
-      await analyticsService.recordClick({
+      await analyticsQueue.add("record-analytics", {
         shortUrlId: url!.id,
         ...metadata,
       });
       return { originalUrl: cached };
     }
 
-    // Cache miss — try to acquire the lock before hitting Postgres
     const lock = await lockService.acquireLock(shortCode);
 
     if (!lock.acquired) {
-      // Someone else is already rebuilding the cache — wait briefly, then retry cache
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const retryCache = await getCache(cacheKey);
       if (retryCache) {
         const url = await prisma.url.findUnique({ where: { shortCode } });
-        await analyticsService.recordClick({
+        await analyticsQueue.add("record-analytics", {
           shortUrlId: url!.id,
           ...metadata,
         });
@@ -92,7 +90,7 @@ export const urlService = {
         throw new Error("Short URL not found");
       }
 
-      await analyticsService.recordClick({
+      await analyticsQueue.add("record-analytics", {
         shortUrlId: url.id,
         ...metadata,
       });
