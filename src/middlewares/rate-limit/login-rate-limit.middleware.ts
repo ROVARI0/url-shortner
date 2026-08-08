@@ -2,6 +2,7 @@ import rateLimit from "express-rate-limit";
 import RedisStore from "rate-limit-redis";
 import redis from "../../lib/redis";
 import { Request, Response } from "express";
+import { logger } from "../../config/logger";
 
 const WINDOW_MINUTES = 15;
 const MAX_ATTEMPTS = 5;
@@ -23,10 +24,10 @@ export const loginRateLimit = rateLimit({
   }),
 
   handler: (req: Request, res: Response) => {
-    console.warn("LOGIN_RATE_LIMIT_EXCEEDED", {
-      ip: req.ip,
-      path: req.originalUrl,
-    });
+    logger.warn(
+      { ip: req.ip, path: req.originalUrl },
+      "LOGIN_RATE_LIMIT_EXCEEDED",
+    );
     res.status(429).json({
       success: false,
       message: "Too many login attempts. Please try again later",
